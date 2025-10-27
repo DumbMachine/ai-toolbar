@@ -7,12 +7,12 @@
 	"files": [
 		{
 			"path": "registry/new-york/blocks/toolbar/ai-toolbar.tsx",
-			"type": "registry:component",
+			"type": "registry:ui",
 			"target": "components/ai-toolbar/ai-toolbar.tsx"
 		},
 		{
 			"path": "registry/new-york/blocks/toolbar/hooks/use-bippy.ts",
-			"type": "registry:hook",
+			"type": "registry:ui",
 			"target": "components/ai-toolbar/hooks/use-bippy.ts"
 		}
 	]
