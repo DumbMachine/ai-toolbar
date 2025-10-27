@@ -1,24 +1,17 @@
 {
 	"$schema": "https://ui.shadcn.com/schema/registry.json",
 	"name": "acme",
+	"type": "registry:block",
 	"homepage": "https://acme.com",
-	"items": [
+	"dependencies": ["bippy"],
+	"files": [
 		{
-			"name": "ai-toolbar",
-			"type": "registry:component",
-			"title": "AI Toolbar",
-			"description": "A custom AI annotation toolbar component.",
-			"dependencies": ["bippy"],
-			"files": [
-				{
-					"path": "registry/new-york/blocks/toolbar/ai-toolbar.tsx",
-					"type": "registry:component"
-				},
-				{
-					"path": "registry/new-york/blocks/toolbar/hooks/use-bippy.ts",
-					"type": "registry:hook"
-				}
-			]
+			"path": "registry/new-york/blocks/toolbar/ai-toolbar.tsx",
+			"type": "registry:component"
+		},
+		{
+			"path": "registry/new-york/blocks/toolbar/hooks/use-bippy.ts",
+			"type": "registry:hook"
 		}
 	]
 }
