@@ -1,7 +1,7 @@
 {
 	"$schema": "https://ui.shadcn.com/schema/registry.json",
 	"name": "acme",
-	"type": "registry:block",
+	"type": "registry:component",
 	"homepage": "https://acme.com",
 	"dependencies": ["bippy"],
 	"files": [
