@@ -2,12 +2,13 @@
 	"$schema": "https://ui.shadcn.com/schema/registry.json",
 	"name": "acme",
 	"homepage": "https://acme.com",
-	"items": [
+	"files": [
 		{
 			"name": "ai-toolbar",
 			"type": "registry:component",
 			"title": "AI Toolbar",
 			"description": "A custom AI annotation toolbar component.",
+			"dependencies": ["bippy"],
 			"files": [
 				{
 					"path": "registry/new-york/blocks/toolbar/ai-toolbar.tsx",
