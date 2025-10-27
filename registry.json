@@ -15,7 +15,7 @@
 				},
 				{
 					"path": "registry/new-york/blocks/toolbar/hooks/use-bippy.ts",
-					"type": "registry:component"
+					"type": "registry:hook"
 				}
 			]
 		}
