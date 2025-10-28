@@ -1,7 +1,7 @@
 "use client";
 
-import { Box, GitBranch, MousePointer2, X } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { Check, GitBranch, MousePointer2 } from "lucide-react";
+import { useCallback, useMemo, useRef, useState, useEffect } from "react";
 
 import { useDrawSelect, useSingleSelect } from "./hooks/use-bippy";
 
@@ -37,24 +37,6 @@ interface SelectionRect {
 	height: number;
 }
 
-interface AnnotationCardProps {
-	annotation: AnnotationData;
-	index: number;
-	isActive: boolean;
-	onClick: () => void;
-}
-
-interface PromptPosition {
-	left: number;
-	top: number;
-}
-
-interface SinglePromptDialogProps {
-	annotation: AnnotationData;
-	onClose: () => void;
-	position: PromptPosition;
-}
-
 interface HighlightOverlayProps {
 	rect: DOMRect | SelectionRect | null;
 	color?: "primary" | "secondary";
@@ -64,6 +46,11 @@ interface HighlightOverlayProps {
 interface SelectionRectangleProps {
 	startPos: Position | null;
 	currentPos: Position | null;
+}
+
+interface ToastProps {
+	message: string;
+	count?: number;
 }
 
 // Helper function from hooks
@@ -80,15 +67,12 @@ const getSelectionRect = (
 	};
 };
 
-const annotationToPrompt = (
-	annotation: AnnotationData,
-	changeRequest: string,
-	idx?: number,
-) => {
+const annotationToPrompt = (annotation: AnnotationData, idx?: number) => {
 	const fiberInfo = Array.isArray(annotation.fiberInfo)
 		? annotation.fiberInfo[0]
 		: annotation.fiberInfo;
 
+	console.log({ fiberInfo });
 	const componentName = fiberInfo?.componentName || "unknown";
 	const source = fiberInfo?.source;
 	const props = fiberInfo?.props;
@@ -108,389 +92,28 @@ const annotationToPrompt = (
 			.join(", ");
 		contextInfo += `\n[Props: ${propsList}${Object.keys(props).length > 5 ? "..." : ""}]`;
 	}
-
-	return `Annotation ${idx ? idx : ""}:\n${contextInfo}\n[Change Request]: ${changeRequest}\n`;
+	return `
+<referenced_element>
+${contextInfo}
+</referenced_element>
+	`;
 };
 
-const AnnotationCard: React.FC<AnnotationCardProps> = ({
-	annotation,
-	index,
-	isActive,
-	onClick,
-}) => {
-	const fiberInfo = Array.isArray(annotation.fiberInfo)
-		? annotation.fiberInfo[0]
-		: annotation.fiberInfo;
-
-	const sourceInfo = fiberInfo?.source;
-	const componentName = fiberInfo?.componentName || "unknown";
-
-	const handleClick = useCallback(() => {
-		onClick();
-	}, [onClick]);
-
-	const handleKeyDown = useCallback(
-		(e: React.KeyboardEvent) => {
-			if (e.key === "Enter" || e.key === " ") {
-				e.preventDefault();
-				onClick();
-			}
-		},
-		[onClick],
-	);
-
+const Toast: React.FC<ToastProps> = ({ message, count }) => {
 	return (
-		<div
-			className={`border rounded-lg p-3 cursor-pointer transition-all ${
-				isActive
-					? "border-primary bg-primary/5"
-					: "border-border hover:border-accent"
-			}`}
-			onClick={handleClick}
-			onKeyDown={handleKeyDown}
-			role="button"
-			tabIndex={0}
-		>
-			<div className="flex items-center justify-between mb-2">
-				<div className="flex items-center gap-2">
-					<span className="text-xs bg-muted px-2 py-1 rounded-full font-mono">
-						#{index + 1}
-					</span>
-					<span className="text-sm font-medium text-primary">
-						&lt;{componentName}&gt;
-					</span>
+		<div className="fixed top-8 left-1/2 -translate-x-1/2 z-1000001 animate-in fade-in slide-in-from-top-4 duration-300">
+			<div className="bg-card border rounded-xl shadow-2xl px-6 py-4 flex items-center gap-3 min-w-[300px]">
+				<div className="shrink-0 w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
+					<Check className="w-5 h-5 text-primary" />
 				</div>
-				{Array.isArray(annotation.fiberInfo) && (
-					<span className="text-xs text-muted-foreground">
-						{annotation.fiberInfo.length} elements
-					</span>
-				)}
-			</div>
-
-			{sourceInfo && (
-				<div className="text-xs text-muted-foreground mb-2">
-					<div className="font-mono bg-muted/50 px-2 py-1 rounded text-xs">
-						{sourceInfo.fileName}:{sourceInfo.lineNumber}:
-						{sourceInfo.columnNumber}
-					</div>
-				</div>
-			)}
-
-			{fiberInfo?.props && Object.keys(fiberInfo.props).length > 0 && (
-				<div className="text-xs text-muted-foreground">
-					<div className="font-mono">
-						Props: {Object.keys(fiberInfo.props).slice(0, 3).join(", ")}
-						{Object.keys(fiberInfo.props).length > 3 && "..."}
-					</div>
-				</div>
-			)}
-		</div>
-	);
-};
-
-const MultiAnnotationPromptDialog: React.FC<{
-	annotations: AnnotationData[];
-	activeAnnotation: AnnotationData | null;
-	onClose: () => void;
-	position: PromptPosition;
-	onAnnotationSelect: (annotation: AnnotationData) => void;
-}> = ({
-	annotations,
-	activeAnnotation,
-	onClose,
-	position,
-	onAnnotationSelect,
-}) => {
-	const [value, setValue] = useState("");
-	const [loading, setLoading] = useState(false);
-	const [response, setResponse] = useState("");
-
-	const handleSubmit = useCallback(async () => {
-		if (!value.trim()) return;
-
-		setLoading(true);
-
-		// Generate context-enriched prompts for each annotation
-		const enrichedPrompts = annotations
-			.map((ann, idx) => annotationToPrompt(ann, value, idx + 1))
-			.join("\n---\n\n");
-
-		setResponse(enrichedPrompts);
-		setLoading(false);
-	}, [value, annotations]);
-
-	const handleKeyDown = useCallback(
-		(e: React.KeyboardEvent) => {
-			if (e.key === "Enter" && !e.shiftKey) {
-				e.preventDefault();
-				handleSubmit();
-			}
-		},
-		[handleSubmit],
-	);
-
-	const handleReset = useCallback(() => {
-		setValue("");
-		setResponse("");
-	}, []);
-
-	return (
-		<div
-			className="ai-toolbar-container fixed z-999999 bg-popover border rounded-xl shadow-lg min-w-[500px] max-w-[700px] max-h-[80vh] flex flex-col overflow-hidden"
-			style={{
-				left: `${position.left}px`,
-				top: `${position.top}px`,
-			}}
-		>
-			<div className="p-4 border-b flex justify-between items-center">
-				<div className="text-sm font-medium text-primary">
-					Multiple Annotations ({annotations.length})
-				</div>
-				<button
-					type="button"
-					onClick={onClose}
-					className="text-muted-foreground hover:text-foreground transition-colors"
-				>
-					<X className="h-4 w-4" />
-				</button>
-			</div>
-
-			<div className="flex flex-1 overflow-hidden">
-				{/* Annotations sidebar */}
-				<div className="w-1/3 border-r bg-muted/20 p-3 overflow-y-auto">
-					<div className="text-xs font-medium text-muted-foreground mb-3 uppercase tracking-wide">
-						Selected Elements
-					</div>
-					<div className="space-y-2">
-						{annotations.map((annotation, index) => (
-							<AnnotationCard
-								key={annotation.id}
-								annotation={annotation}
-								index={index}
-								isActive={activeAnnotation?.id === annotation.id}
-								onClick={() => onAnnotationSelect(annotation)}
-							/>
-						))}
-					</div>
-				</div>
-
-				{/* Main content */}
-				<div className="flex-1 p-4 overflow-y-auto">
-					{!response ? (
-						<div className="flex flex-col gap-3">
-							<label
-								htmlFor="multi-annotation-input"
-								className="text-sm font-medium text-foreground"
-							>
-								Describe changes for all selected elements:
-							</label>
-							<textarea
-								id="multi-annotation-input"
-								value={value}
-								onChange={(e) => setValue(e.target.value)}
-								onKeyDown={handleKeyDown}
-								placeholder="e.g., Make all buttons consistent with primary color and same padding..."
-								className="w-full min-h-[120px] bg-background text-foreground border rounded-lg px-3 py-2 text-sm resize-vertical outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
-							/>
-
-							{activeAnnotation && (
-								<div className="p-3 bg-accent/20 rounded-lg">
-									<div className="text-xs font-medium text-muted-foreground mb-2">
-										Active Element Context:
-									</div>
-									<div className="text-sm">
-										{Array.isArray(activeAnnotation.fiberInfo) ? (
-											<div>
-												<strong>
-													{activeAnnotation.fiberInfo.length} elements selected
-												</strong>
-												<div className="text-xs text-muted-foreground mt-1">
-													{activeAnnotation.fiberInfo.map((info, idx) => (
-														<div
-															key={`${info.componentName}-${idx}`}
-															className="font-mono"
-														>
-															{info.componentName}{" "}
-															{info.source &&
-																`(${info.source.fileName}:${info.source.lineNumber})`}
-														</div>
-													))}
-												</div>
-											</div>
-										) : (
-											<div>
-												<strong>
-													&lt;{activeAnnotation.fiberInfo?.componentName}&gt;
-												</strong>
-												{activeAnnotation.fiberInfo?.source && (
-													<div className="text-xs text-muted-foreground font-mono mt-1">
-														{activeAnnotation.fiberInfo.source.fileName}:
-														{activeAnnotation.fiberInfo.source.lineNumber}:
-														{activeAnnotation.fiberInfo.source.columnNumber}
-													</div>
-												)}
-											</div>
-										)}
-									</div>
-								</div>
-							)}
-
-							<button
-								type="button"
-								onClick={handleSubmit}
-								disabled={!value.trim() || loading}
-								className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed rounded-lg px-4 py-2 font-medium text-sm flex items-center justify-center gap-2 transition-colors"
-							>
-								{loading
-									? "Generating..."
-									: `Generate Changes for ${annotations.length} Elements`}
-							</button>
-						</div>
-					) : (
-						<div className="flex flex-col gap-3">
-							<div className="p-3 bg-muted rounded-lg text-sm">
-								<strong>Request:</strong> {value}
-							</div>
-							<pre className="bg-muted border rounded-lg p-3 text-xs leading-relaxed whitespace-pre-wrap font-mono">
-								{response}
-							</pre>
-							<button
-								type="button"
-								onClick={handleReset}
-								className="bg-background border hover:bg-accent hover:text-accent-foreground rounded-lg px-4 py-2 text-sm transition-colors"
-							>
-								New Request
-							</button>
-						</div>
+				<div className="flex-1">
+					<p className="text-sm font-medium text-foreground">{message}</p>
+					{count && count > 1 && (
+						<p className="text-xs text-muted-foreground mt-0.5">
+							{count} annotations copied
+						</p>
 					)}
 				</div>
-			</div>
-		</div>
-	);
-};
-
-const SingleAnnotationPromptDialog: React.FC<SinglePromptDialogProps> = ({
-	annotation,
-	onClose,
-	position,
-}) => {
-	const [value, setValue] = useState("");
-	const [loading, setLoading] = useState(false);
-	const [response, setResponse] = useState("");
-
-	const handleSubmit = useCallback(async () => {
-		if (!value.trim()) return;
-
-		setLoading(true);
-
-		// Generate context-enriched prompts for each annotation
-		const enrichedPrompts = [annotation]
-			.map((ann, idx) => annotationToPrompt(ann, value, idx + 1))
-			.join("\n---\n\n");
-
-		setResponse(enrichedPrompts);
-		setLoading(false);
-	}, [value, annotation]);
-
-	const handleKeyDown = useCallback(
-		(e: React.KeyboardEvent) => {
-			if (e.key === "Enter" && !e.shiftKey) {
-				e.preventDefault();
-				handleSubmit();
-			}
-		},
-		[handleSubmit],
-	);
-
-	const handleReset = useCallback(() => {
-		setValue("");
-		setResponse("");
-	}, []);
-
-	const fiberInfo = useMemo(
-		() =>
-			Array.isArray(annotation.fiberInfo)
-				? annotation.fiberInfo[0]
-				: annotation.fiberInfo,
-		[annotation.fiberInfo],
-	);
-
-	return (
-		<div
-			className="ai-toolbar-container fixed z-999999 bg-popover border rounded-xl shadow-lg min-w-[400px] max-w-[500px] max-h-[600px] flex flex-col overflow-hidden"
-			style={{
-				left: `${position.left}px`,
-				top: `${position.top}px`,
-			}}
-		>
-			<div className="p-4 border-b flex justify-between items-center">
-				<div className="text-sm font-medium text-primary">
-					&lt;{fiberInfo?.componentName}&gt;
-				</div>
-				<button
-					type="button"
-					onClick={onClose}
-					className="text-muted-foreground hover:text-foreground transition-colors"
-				>
-					<X className="h-4 w-4" />
-				</button>
-			</div>
-
-			<div className="p-4 flex-1 overflow-y-auto">
-				{fiberInfo?.source && (
-					<div className="mb-3 p-3 bg-accent/20 rounded-lg">
-						<div className="text-xs font-medium text-muted-foreground mb-1">
-							Source Location:
-						</div>
-						<div className="text-xs font-mono bg-muted px-2 py-1 rounded">
-							{fiberInfo.source.fileName}:{fiberInfo.source.lineNumber}:
-							{fiberInfo.source.columnNumber}
-						</div>
-					</div>
-				)}
-
-				{!response ? (
-					<div className="flex flex-col gap-3">
-						<label
-							htmlFor="single-annotation-input"
-							className="text-sm font-medium text-foreground"
-						>
-							Describe the change you want to make:
-						</label>
-						<textarea
-							id="single-annotation-input"
-							value={value}
-							onChange={(e) => setValue(e.target.value)}
-							onKeyDown={handleKeyDown}
-							placeholder="e.g., Change the button color to blue and increase padding..."
-							className="w-full min-h-[100px] bg-background text-foreground border rounded-lg px-3 py-2 text-sm resize-vertical outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
-						/>
-						<button
-							type="button"
-							onClick={handleSubmit}
-							disabled={!value.trim() || loading}
-							className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed rounded-lg px-4 py-2 font-medium text-sm flex items-center justify-center gap-2 transition-colors"
-						>
-							{loading ? "Generating..." : "Generate Changes"}
-						</button>
-					</div>
-				) : (
-					<div className="flex flex-col gap-3">
-						<div className="p-3 bg-muted rounded-lg text-sm">
-							<strong>Request:</strong> {value}
-						</div>
-						<pre className="bg-muted border rounded-lg p-3 text-xs leading-relaxed whitespace-pre-wrap font-mono">
-							{response}
-						</pre>
-						<button
-							type="button"
-							onClick={handleReset}
-							className="bg-background border hover:bg-accent hover:text-accent-foreground rounded-lg px-4 py-2 text-sm transition-colors"
-						>
-							New Annotation
-						</button>
-					</div>
-				)}
 			</div>
 		</div>
 	);
@@ -551,27 +174,43 @@ const AIAnnotationToolbar = () => {
 	const [mode, setMode] = useState<
 		null | "single-select" | "multi-comment" | "draw-select"
 	>(null);
-	const [position, setPosition] = useState(() => {
-		const toolbarWidth = 400;
-		const toolbarHeight = 80;
-		const x =
-			typeof window !== "undefined"
-				? window.innerWidth / 2 - toolbarWidth / 2
-				: 100;
-		const y =
-			typeof window !== "undefined"
-				? window.innerHeight - toolbarHeight - 32
-				: 100;
-		return { x, y };
-	});
+	
+	// Initialize position to bottom center (like Vercel toolbar)
+	const [position, setPosition] = useState({ x: 0, y: 0 });
 	const [isDragging, setIsDragging] = useState(false);
 	const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 	const [annotations, setAnnotations] = useState<AnnotationData[]>([]);
-	const [activeAnnotation, setActiveAnnotation] =
-		useState<AnnotationData | null>(null);
-	const [promptPosition, setPromptPosition] = useState({ left: 0, top: 0 });
+	const [showToast, setShowToast] = useState(false);
+	const [toastMessage, setToastMessage] = useState("");
+	const [annotationCount, setAnnotationCount] = useState(0);
 
 	const toolbarRef = useRef<HTMLDivElement>(null);
+	const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+	// Set initial position to bottom center
+	useEffect(() => {
+		if (typeof window !== "undefined" && toolbarRef.current) {
+			const updatePosition = () => {
+				const toolbarRect = toolbarRef.current?.getBoundingClientRect();
+				if (toolbarRect) {
+					const x = window.innerWidth / 2 - toolbarRect.width / 2;
+					const y = window.innerHeight - toolbarRect.height - 32; // 32px from bottom
+					setPosition({ x, y });
+				}
+			};
+
+			// Set initial position after component mounts
+			const timer = setTimeout(updatePosition, 0);
+			
+			// Update position on window resize
+			window.addEventListener('resize', updatePosition);
+			
+			return () => {
+				clearTimeout(timer);
+				window.removeEventListener('resize', updatePosition);
+			};
+		}
+	}, []);
 
 	const tools = useMemo(
 		() => [
@@ -579,7 +218,7 @@ const AIAnnotationToolbar = () => {
 				id: "single-select" as const,
 				icon: MousePointer2,
 				label: "Single Select",
-				tooltip: "Click elements to annotate",
+				tooltip: "Click elements to copy context",
 			},
 			{
 				id: "multi-comment" as const,
@@ -587,66 +226,109 @@ const AIAnnotationToolbar = () => {
 				label: "Multi Comment",
 				tooltip: "Add multiple annotations",
 			},
-			{
-				id: "draw-select" as const,
-				icon: Box,
-				label: "Draw Select",
-				tooltip: "Draw rectangle to select & annotate",
-			},
+			// {
+			// 	id: "draw-select" as const,
+			// 	icon: Box,
+			// 	label: "Draw Select",
+			// 	tooltip: "Draw rectangle to copy context",
+			// },
 		],
 		[],
 	);
 
+	const copyToClipboard = useCallback(async (text: string) => {
+		try {
+			await navigator.clipboard.writeText(text);
+			return true;
+		} catch (err) {
+			console.error("Failed to copy:", err);
+			return false;
+		}
+	}, []);
+
+	const showToastNotification = useCallback(
+		(message: string, count: number = 1) => {
+			if (toastTimeoutRef.current) {
+				clearTimeout(toastTimeoutRef.current);
+			}
+
+			setToastMessage(message);
+			setAnnotationCount(count);
+			setShowToast(true);
+
+			toastTimeoutRef.current = setTimeout(() => {
+				setShowToast(false);
+			}, 3000);
+		},
+		[],
+	);
+
 	const handleAnnotate = useCallback(
-		(annotationData: AnnotationData) => {
+		async (annotationData: AnnotationData) => {
 			const newAnnotation: AnnotationData = {
 				...annotationData,
 				mode,
 			};
 
-			setAnnotations((prev) =>
-				mode === "multi-comment" ? [...prev, newAnnotation] : [newAnnotation],
-			);
-			setActiveAnnotation(newAnnotation);
+			if (mode === "multi-comment") {
+				setAnnotations((prev) => [...prev, newAnnotation]);
+			} else {
+				// Single select or draw select - copy immediately
+				const contextText = annotationToPrompt(newAnnotation);
+				const success = await copyToClipboard(contextText);
 
-			// Position prompt dialog
-			const rect = annotationData.rect;
-			const dialogWidth = mode === "multi-comment" ? 650 : 450;
-			const padding = 10;
+				if (success) {
+					showToastNotification("Context copied to clipboard!");
+				}
 
-			let left = rect.left + rect.width + padding;
-			const top = rect.top;
-
-			if (left + dialogWidth > window.innerWidth) {
-				left = Math.max(padding, rect.left - dialogWidth - padding);
+				// Clear after a brief highlight
+				setTimeout(() => {
+					setAnnotations([]);
+					setMode(null);
+				}, 500);
 			}
-
-			setPromptPosition({ left, top });
 		},
-		[mode],
+		[mode, copyToClipboard, showToastNotification],
 	);
 
-	const handleClosePrompt = useCallback(() => {
-		if (mode !== "multi-comment") {
-			setAnnotations([]);
-		}
-		setActiveAnnotation(null);
-	}, [mode]);
-
 	const handleModeChange = useCallback(
-		(newMode: typeof mode) => {
+		async (newMode: typeof mode) => {
+			// If clicking multi-comment while in multi-comment mode with annotations
+			if (
+				newMode === "multi-comment" &&
+				mode === "multi-comment" &&
+				annotations.length > 0
+			) {
+				// Copy all annotations
+				const contextText = annotations
+					.map((ann, idx) => annotationToPrompt(ann, idx + 1))
+					.join("\n---\n\n");
+
+				const success = await copyToClipboard(contextText);
+
+				if (success) {
+					showToastNotification(
+						"All contexts copied to clipboard!",
+						annotations.length,
+					);
+				}
+
+				// Clear annotations
+				setAnnotations([]);
+				setMode(null);
+				return;
+			}
+
 			if (newMode === mode) {
 				setMode(null);
 				setAnnotations([]);
-				setActiveAnnotation(null);
 				return;
 			}
 
 			setMode(newMode);
 			setAnnotations([]);
-			setActiveAnnotation(null);
 		},
-		[mode],
+		[mode, annotations, copyToClipboard, showToastNotification],
 	);
 
 	// Single select mode
@@ -667,10 +349,11 @@ const AIAnnotationToolbar = () => {
 		onAnnotate: handleAnnotate,
 	});
 
-	// Toolbar dragging
+	// Toolbar dragging handlers
 	const handleMouseDown = useCallback((e: React.MouseEvent) => {
 		const target = e.target as Element;
 		if (target.closest(".drag-handle")) {
+			e.preventDefault();
 			setIsDragging(true);
 			if (toolbarRef.current) {
 				const rect = toolbarRef.current.getBoundingClientRect();
@@ -682,40 +365,55 @@ const AIAnnotationToolbar = () => {
 		}
 	}, []);
 
-	// useEffect(() => {
-	// 	if (!isDragging) return;
+	const handleMouseMove = useCallback((e: MouseEvent) => {
+		if (isDragging) {
+			e.preventDefault();
+			const newX = e.clientX - dragOffset.x;
+			const newY = e.clientY - dragOffset.y;
+			
+			// Optional: Add bounds checking to keep toolbar on screen
+			const maxX = window.innerWidth - (toolbarRef.current?.offsetWidth || 0);
+			const maxY = window.innerHeight - (toolbarRef.current?.offsetHeight || 0);
+			
+			setPosition({
+				x: Math.max(0, Math.min(newX, maxX)),
+				y: Math.max(0, Math.min(newY, maxY)),
+			});
+		}
+	}, [isDragging, dragOffset]);
 
-	// 	const handleMouseMove = (e: MouseEvent) => {
-	// 		setPosition({
-	// 			x: e.clientX - dragOffset.x,
-	// 			y: e.clientY - dragOffset.y,
-	// 		});
-	// 	};
+	const handleMouseUp = useCallback(() => {
+		setIsDragging(false);
+	}, []);
 
-	// 	const handleMouseUp = () => {
-	// 		setIsDragging(false);
-	// 	};
-
-	// 	document.addEventListener("mousemove", handleMouseMove);
-	// 	document.addEventListener("mouseup", handleMouseUp);
-
-	// 	return () => {
-	// 		document.removeEventListener("mousemove", handleMouseMove);
-	// 		document.removeEventListener("mouseup", handleMouseUp);
-	// 	};
-	// }, [isDragging, dragOffset]);
+	// Add global mouse event listeners for dragging
+	useEffect(() => {
+		if (isDragging) {
+			document.addEventListener('mousemove', handleMouseMove);
+			document.addEventListener('mouseup', handleMouseUp);
+			
+			return () => {
+				document.removeEventListener('mousemove', handleMouseMove);
+				document.removeEventListener('mouseup', handleMouseUp);
+			};
+		}
+	}, [isDragging, handleMouseMove, handleMouseUp]);
 
 	return (
 		<>
+			{/* Toast Notification */}
+			{showToast && <Toast message={toastMessage} count={annotationCount} />}
+
 			{/* Floating Toolbar */}
 			<div
 				role={"toolbar"}
 				ref={toolbarRef}
-				className="ai-toolbar-container fixed z-[1000000]"
+				className="ai-toolbar-container fixed z-1000000"
 				style={{
 					left: `${position.x}px`,
 					top: `${position.y}px`,
 					cursor: isDragging ? "grabbing" : "default",
+					userSelect: "none", // Prevent text selection during drag
 				}}
 				onMouseDown={handleMouseDown}
 			>
@@ -734,7 +432,7 @@ const AIAnnotationToolbar = () => {
 						{mode === "multi-comment" && annotations.length > 0 && (
 							<div className="px-3 py-2 bg-primary/10 rounded-lg border border-primary/20">
 								<span className="text-primary text-sm font-medium">
-									{annotations.length} annotations
+									{annotations.length} selected
 								</span>
 							</div>
 						)}
@@ -743,6 +441,11 @@ const AIAnnotationToolbar = () => {
 						{tools.map((tool) => {
 							const Icon = tool.icon;
 							const isActive = mode === tool.id;
+							const showCopyIndicator =
+								isActive &&
+								tool.id === "multi-comment" &&
+								annotations.length > 0;
+
 							return (
 								<button
 									type={"button"}
@@ -760,7 +463,7 @@ const AIAnnotationToolbar = () => {
 										}`}
 									/>
 									<div className="absolute -bottom-10 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-popover text-xs text-popover-foreground rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap border z-50 shadow-md">
-										{tool.tooltip}
+										{showCopyIndicator ? "Click to copy all" : tool.tooltip}
 									</div>
 									{isActive && (
 										<div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-primary rounded-full" />
@@ -782,11 +485,11 @@ const AIAnnotationToolbar = () => {
 			</div>
 
 			{/* Hover highlights */}
-			{mode === "single-select" && singleRect && !activeAnnotation && (
+			{mode === "single-select" && singleRect && (
 				<HighlightOverlay rect={singleRect} />
 			)}
 
-			{mode === "multi-comment" && multiRect && !activeAnnotation && (
+			{mode === "multi-comment" && multiRect && (
 				<HighlightOverlay rect={multiRect} />
 			)}
 
@@ -795,7 +498,7 @@ const AIAnnotationToolbar = () => {
 				<HighlightOverlay
 					key={annotation.id}
 					rect={annotation.rect}
-					color={annotation === activeAnnotation ? "primary" : "secondary"}
+					color="secondary"
 					style="solid"
 				/>
 			))}
@@ -813,30 +516,6 @@ const AIAnnotationToolbar = () => {
 					color="secondary"
 				/>
 			))}
-
-			{/* Prompt dialog */}
-			{activeAnnotation &&
-				mode === "multi-comment" &&
-				annotations.length > 1 && (
-					<MultiAnnotationPromptDialog
-						annotations={annotations}
-						activeAnnotation={activeAnnotation}
-						position={promptPosition}
-						onClose={handleClosePrompt}
-						onAnnotationSelect={setActiveAnnotation}
-					/>
-				)}
-
-			{activeAnnotation &&
-				(mode === "single-select" ||
-					mode === "draw-select" ||
-					(mode === "multi-comment" && annotations.length === 1)) && (
-					<SingleAnnotationPromptDialog
-						annotation={activeAnnotation}
-						position={promptPosition}
-						onClose={handleClosePrompt}
-					/>
-				)}
 		</>
 	);
 };

@@ -7,9 +7,11 @@ export default function Home() {
 	return (
 		<div className="max-w-5xl mx-auto min-h-svh px-4 py-8 flex flex-col gap-8">
 			<header className="flex flex-col gap-1">
-				<h1 className="text-3xl font-bold tracking-tight">Custom Registry</h1>
+				<h1 className="text-3xl font-bold tracking-tight">AI Toolbar</h1>
 				<p className="text-muted-foreground">
-					A custom registry for distributing components with immersive UI demos.
+					Try using the AI Annotation Toolbar in this demo chat app, to get llm
+					requests with component context! No more wasting tokens on finding the
+					right context.
 				</p>
 			</header>
 
@@ -29,6 +31,15 @@ export default function Home() {
 		</div>
 	);
 }
+
+const Channel = ({ name }: { name: string }) => {
+	return (
+		<div className="flex items-center gap-2 w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-muted">
+			<Hash className="w-4 h-4" />
+			{name}
+		</div>
+	);
+};
 
 const DemoSlackApp = () => {
 	const [activeChannel, setActiveChannel] = useState("general");
@@ -75,18 +86,7 @@ const DemoSlackApp = () => {
 				</div>
 				<nav className="flex-1 overflow-y-auto p-1">
 					{channels.map((ch) => (
-						<button
-							key={ch.id}
-							onClick={() => setActiveChannel(ch.id)}
-							className={`flex items-center gap-2 w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-								activeChannel === ch.id
-									? "bg-accent text-accent-foreground"
-									: "hover:bg-muted"
-							}`}
-						>
-							<Hash className="w-4 h-4" />
-							{ch.name}
-						</button>
+						<Channel key={ch.id} name={ch.name} />
 					))}
 				</nav>
 
